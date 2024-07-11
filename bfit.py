@@ -21,77 +21,19 @@ class FitModels:
         norm = 1. / integral
         return self.bin_width * norm * amplitude * np.exp(-decay * (x - self.x_min))
 
-    def double_gaussian_exp(self, x_vals, n_signal, frac, n_bkg, mean1, mean2, std_dev1, std_dev2, amplitude, decay):
-        """Double Gaussian with exponential background."""
-        n_signal1 = n_signal * frac
-        n_signal2 = n_signal * (1 - frac)
-        return (n_signal1 * self.gaussian(x_vals, mean1, std_dev1) +
-                n_signal2 * self.gaussian(x_vals, mean2, std_dev2) +
-                n_bkg * self.exponential(x_vals, amplitude, decay))
-
-    def double_gaussian_parabola(self, x_vals, n_signal, frac, n_bkg, mean1, mean2, std_dev1, std_dev2, a, b, c):
-        """Double Gaussian with parabolic background."""
-        n_signal1 = n_signal * frac
-        n_signal2 = n_signal * (1 - frac)
-        return (n_signal1 * self.gaussian(x_vals, mean1, std_dev1) +
-                n_signal2 * self.gaussian(x_vals, mean2, std_dev2) +
-                n_bkg * self.parabola(x_vals, a, b, c))
-
-    def parabola(self, x, a, b, c):
-        """Parabolic function."""
-        return self.bin_width * (a * (x ** 2) + b * x + c)
-
-    def double_gaussian_linear(self, x_vals, n_signal, frac, n_bkg, mean1, mean2, std_dev1, std_dev2, slope, intercept):
-        """Double Gaussian with linear background."""
-        n_signal1 = n_signal * frac
-        n_signal2 = n_signal * (1 - frac)
-        return (n_signal1 * self.gaussian(x_vals, mean1, std_dev1) +
-                n_signal2 * self.gaussian(x_vals, mean2, std_dev2) +
-                n_bkg * self.linear(x_vals, slope, intercept))
-
     def linear(self, x, slope, intercept):
         """Linear function."""
         integral = slope * (self.x_max - self.x_min) + 0.5 * intercept * (self.x_max ** 2 - self.x_min ** 2)
         norm = 1. / integral
         return self.bin_width * norm * (slope * x + intercept)
 
-    def argus_bg_integral(self, m0, c, p):
-        """ARGUS background integral."""
-        def integrand(x):
-            z = 1 - (x / m0) ** 2
-            return x * np.sqrt(z) * np.exp(c * z ** p) if z > 0 else 0
-        integral, _ = quad(integrand, 0, m0, limit=10000)
-        return integral
-
-    def argus_bg(self, x, m0, c, p):
-        """ARGUS background function."""
-        normalization = self.argus_bg_integral(m0, c, p)
-        z = 1 - (x / m0) ** 2
-        return np.where(z > 0, (x * np.sqrt(z) * np.exp(c * z ** p)) / normalization, 0)
-
-    def gaussian_argus(self, x_vals, n_signal, n_bkg, mean, std_dev, m0, c, p):
-        """Gaussian with ARGUS background."""
-        return n_signal * self.gaussian(x_vals, mean, std_dev) + n_bkg * self.argus_bg(x_vals, m0, c, p)
-
-    def gaussian_exp(self, x_vals, n_signal, n_bkg, mean, std_dev, amplitude, decay):
-        """Gaussian with exponential background."""
-        return n_signal * self.gaussian(x_vals, mean, std_dev) + n_bkg * self.exponential(x_vals, amplitude, decay)
-
-    def gaussian_linear(self, x_vals, n_signal, n_bkg, mean, std_dev, slope, intercept):
-        """Gaussian with linear background."""
-        return n_signal * self.gaussian(x_vals, mean, std_dev) + n_bkg * self.linear(x_vals, slope, intercept)
+    def parabola(self, x, a, b, c):
+        """Parabolic function."""
+        return self.bin_width * (a * (x ** 2) + b * x + c)
 
     def breit_wigner(self, x, mass, width):
         """Breit-Wigner distribution."""
         return (1 / np.pi) * (0.5 * width) / ((x - mass) ** 2 + (0.5 * width) ** 2)
-
-    def breit_wigner_exp(self, x_vals, n_signal, n_bkg, mass, width, amplitude, decay):
-        """Breit-Wigner with exponential background."""
-        return n_signal * self.breit_wigner(x_vals, mass, width) + n_bkg * self.exponential(x_vals, amplitude, decay)
-
-    def breit_wigner_linear(self, x_vals, n_signal, n_bkg, mass, width, slope, intercept):
-        """Breit-Wigner with linear background."""
-        return n_signal * self.breit_wigner(x_vals, mass, width) + n_bkg * self.linear(x_vals, slope, intercept)
 
     def crystal_ball(self, x, alpha, n, mean, std_dev):
         """Crystal Ball function."""
@@ -101,9 +43,27 @@ class FitModels:
                         np.exp(-(x - mean) ** 2 / (2 * std_dev ** 2)),
                         A * (B - (x - mean) / std_dev) ** (-n))
 
-    def crystal_ball_exp(self, x_vals, n_signal, n_bkg, alpha, n, mean, std_dev, amplitude, decay):
-        """Crystal Ball with exponential background."""
-        return n_signal * self.crystal_ball(x_vals, alpha, n, mean, std_dev) + n_bkg * self.exponential(x_vals, amplitude, decay)
+    def argus_bg(self, x, m0, c, p):
+        """ARGUS background function."""
+        def argus_bg_integral(m0, c, p):
+            def integrand(x):
+                z = 1 - (x / m0) ** 2
+                return x * np.sqrt(z) * np.exp(c * z ** p) if z > 0 else 0
+            integral, _ = quad(integrand, 0, m0, limit=10000)
+            return integral
+        
+        normalization = argus_bg_integral(m0, c, p)
+        z = 1 - (x / m0) ** 2
+        return np.where(z > 0, (x * np.sqrt(z) * np.exp(c * z ** p)) / normalization, 0)
+
+class Component:
+    """Base class for fit components."""
+    def __init__(self, function, n_params):
+        self.function = function
+        self.n_params = n_params
+
+    def __call__(self, x, *params):
+        return self.function(x, *params)
 
 class FitBase:
     """Base class for all fit models."""
@@ -210,39 +170,110 @@ class FitBase:
         else:
             raise RuntimeError("Fit has not been performed yet.")
 
-# Derived fit classes
-class GaussianExpFit(FitBase):
-    def fit_function(self, x_vals, *params):
-        return self.fit_models.gaussian_exp(x_vals, *params)
+class CompositeModel(FitBase):
+    """Composite model class for combining multiple fit components."""
 
-class DoubleGaussianExpFit(FitBase):
-    def fit_function(self, x_vals, *params):
-        return self.fit_models.double_gaussian_exp(x_vals, *params)
+    def __init__(self, bins, counts, param_limits=None):
+        super().__init__(bins, counts, param_limits)
+        self.components = []
 
-class DoubleGaussianParabolaFit(FitBase):
-    def fit_function(self, x_vals, *params):
-        return self.fit_models.double_gaussian_parabola(x_vals, *params)
+    def add_component(self, component, weight=1.0):
+        """Add a component to the composite model."""
+        self.components.append((component, weight))
 
-class DoubleGaussianLinearFit(FitBase):
     def fit_function(self, x_vals, *params):
-        return self.fit_models.double_gaussian_linear(x_vals, *params)
+        """Composite fit function."""
+        result = np.zeros_like(x_vals)
+        param_index = 0
+        for component, weight in self.components:
+            n_params = component.n_params
+            result += weight * component(x_vals, *params[param_index:param_index+n_params])
+            param_index += n_params
+        return result
 
-class GaussianArgusFit(FitBase):
-    def fit_function(self, x_vals, *params):
-        return self.fit_models.gaussian_argus(x_vals, *params)
+# Pre-defined components
+class GaussianComponent(Component):
+    def __init__(self):
+        super().__init__(FitModels(1, 0, 1).gaussian, 2)  # mean, std_dev
 
-class GaussianLinearFit(FitBase):
-    def fit_function(self, x_vals, *params):
-        return self.fit_models.gaussian_linear(x_vals, *params)
+class ExponentialComponent(Component):
+    def __init__(self):
+        super().__init__(FitModels(1, 0, 1).exponential, 2)  # amplitude, decay
 
-class BreitWignerExpFit(FitBase):
-    def fit_function(self, x_vals, *params):
-        return self.fit_models.breit_wigner_exp(x_vals, *params)
+class LinearComponent(Component):
+    def __init__(self):
+        super().__init__(FitModels(1, 0, 1).linear, 2)  # slope, intercept
 
-class BreitWignerLinearFit(FitBase):
-    def fit_function(self, x_vals, *params):
-        return self.fit_models.breit_wigner_linear(x_vals, *params)
+class ParabolaComponent(Component):
+    def __init__(self):
+        super().__init__(FitModels(1, 0, 1).parabola, 3)  # a, b, c
 
-class CrystalBallExpFit(FitBase):
-    def fit_function(self, x_vals, *params):
-        return self.fit_models.crystal_ball_exp(x_vals, *params)
+class BreitWignerComponent(Component):
+    def __init__(self):
+        super().__init__(FitModels(1, 0, 1).breit_wigner, 2)  # mass, width
+
+class CrystalBallComponent(Component):
+    def __init__(self):
+        super().__init__(FitModels(1, 0, 1).crystal_ball, 4)  # alpha, n, mean, std_dev
+
+class ArgusComponent(Component):
+    def __init__(self):
+        super().__init__(FitModels(1, 0, 1).argus_bg, 3)  # m0, c, p
+
+# Existing fit classes (now implemented using CompositeModel)
+class GaussianExpFit(CompositeModel):
+    def __init__(self, bins, counts, param_limits=None):
+        super().__init__(bins, counts, param_limits)
+        self.add_component(GaussianComponent())
+        self.add_component(ExponentialComponent())
+
+class DoubleGaussianExpFit(CompositeModel):
+    def __init__(self, bins, counts, param_limits=None):
+        super().__init__(bins, counts, param_limits)
+        self.add_component(GaussianComponent())
+        self.add_component(GaussianComponent())
+        self.add_component(ExponentialComponent())
+
+class DoubleGaussianParabolaFit(CompositeModel):
+    def __init__(self, bins, counts, param_limits=None):
+        super().__init__(bins, counts, param_limits)
+        self.add_component(GaussianComponent())
+        self.add_component(GaussianComponent())
+        self.add_component(ParabolaComponent())
+
+class DoubleGaussianLinearFit(CompositeModel):
+    def __init__(self, bins, counts, param_limits=None):
+        super().__init__(bins, counts, param_limits)
+        self.add_component(GaussianComponent())
+        self.add_component(GaussianComponent())
+        self.add_component(LinearComponent())
+
+class GaussianArgusFit(CompositeModel):
+    def __init__(self, bins, counts, param_limits=None):
+        super().__init__(bins, counts, param_limits)
+        self.add_component(GaussianComponent())
+        self.add_component(ArgusComponent())
+
+class GaussianLinearFit(CompositeModel):
+    def __init__(self, bins, counts, param_limits=None):
+        super().__init__(bins, counts, param_limits)
+        self.add_component(GaussianComponent())
+        self.add_component(LinearComponent())
+
+class BreitWignerExpFit(CompositeModel):
+    def __init__(self, bins, counts, param_limits=None):
+        super().__init__(bins, counts, param_limits)
+        self.add_component(BreitWignerComponent())
+        self.add_component(ExponentialComponent())
+
+class BreitWignerLinearFit(CompositeModel):
+    def __init__(self, bins, counts, param_limits=None):
+        super().__init__(bins, counts, param_limits)
+        self.add_component(BreitWignerComponent())
+        self.add_component(LinearComponent())
+
+class CrystalBallExpFit(CompositeModel):
+    def __init__(self, bins, counts, param_limits=None):
+        super().__init__(bins, counts, param_limits)
+        self.add_component(CrystalBallComponent())
+        self.add_component(ExponentialComponent())
