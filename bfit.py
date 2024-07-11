@@ -179,11 +179,30 @@ class CompositeModel(FitBase):
         """Composite fit function."""
         result = np.zeros_like(x_vals)
         param_index = 0
+        total_weight = 0
         for component, weight in self.components:
             n_params = component.n_params
             result += weight * component(x_vals, *params[param_index:param_index+n_params])
             param_index += n_params
-        return result
+            total_weight += weight
+        
+        # Normalize the fit function
+        return result / total_weight
+
+    def chi_squared(self, *params):
+        """Calculate chi-squared value."""
+        mask = self.y_errs > 0
+        x_vals_masked = self.x_vals[mask]
+        y_vals_masked = self.y_vals[mask]
+        y_errs_masked = self.y_errs[mask]
+        prediction = self.fit_function(x_vals_masked, *params)
+        
+        # Scale the prediction to match the total number of events
+        scale_factor = np.sum(y_vals_masked) / np.sum(prediction)
+        scaled_prediction = prediction * scale_factor
+        
+        residuals_squared = ((y_vals_masked - scaled_prediction) / y_errs_masked) ** 2
+        return np.sum(residuals_squared)
 
 class UnbinnedFitBase:
     """Base class for all unbinned fit models."""
@@ -294,11 +313,15 @@ class UnbinnedCompositeModel(UnbinnedFitBase):
         """Composite probability density function."""
         result = np.zeros_like(x_vals)
         param_index = 0
+        total_weight = 0
         for component, weight in self.components:
             n_params = component.n_params
             result += weight * component.pdf(x_vals, *params[param_index:param_index+n_params])
             param_index += n_params
-        return result
+            total_weight += weight
+        
+        # Normalize the PDF
+        return result / total_weight
 
     def log_likelihood(self, *params):
         """Calculate log-likelihood value."""
