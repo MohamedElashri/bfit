@@ -65,12 +65,17 @@ class Component(rv_continuous):
         self.function = function
         self._pdf = pdf
         self.n_params = n_params
+        self.normalization = 1.0
 
     def __call__(self, x, *params):
         return self.function(x, *params)
 
     def pdf(self, x, *params):
-        return self._pdf(x, *params)
+        return self._pdf(x, *params) / self.normalization
+
+    def normalize(self, x_min, x_max, *params):
+        self.normalization, _ = quad(self._pdf, x_min, x_max, args=params)
+        return self.normalization
 
 class FitBase:
     """Base class for all binned fit models."""
@@ -194,15 +199,13 @@ class CompositeModel(FitBase):
         """Composite fit function."""
         result = np.zeros_like(x_vals)
         param_index = 0
-        total_weight = 0
         for component, weight in self.components:
             n_params = component.n_params
-            result += weight * component(x_vals, *params[param_index:param_index+n_params])
+            component_params = params[param_index:param_index+n_params]
+            component.normalize(self.x_min, self.x_max, *component_params)
+            result += weight * component(x_vals, *component_params)
             param_index += n_params
-            total_weight += weight
-        
-        # Normalize the fit function
-        return result / total_weight
+        return result
 
     def chi_squared(self, *params):
         """Calculate chi-squared value."""
@@ -330,15 +333,13 @@ class UnbinnedCompositeModel(UnbinnedFitBase):
         """Composite probability density function."""
         result = np.zeros_like(x_vals)
         param_index = 0
-        total_weight = 0
         for component, weight in self.components:
             n_params = component.n_params
-            result += weight * component.pdf(x_vals, *params[param_index:param_index+n_params])
+            component_params = params[param_index:param_index+n_params]
+            component.normalize(self.x_min, self.x_max, *component_params)
+            result += weight * component.pdf(x_vals, *component_params)
             param_index += n_params
-            total_weight += weight
-        
-        # Normalize the PDF
-        return result / total_weight
+        return result
 
     def log_likelihood(self, *params):
         """Calculate log-likelihood value."""
