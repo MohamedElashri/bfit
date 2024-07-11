@@ -219,8 +219,9 @@ class UnbinnedFitBase:
 
     def log_likelihood(self, *params):
         """Calculate log-likelihood value."""
-        raise NotImplementedError("Subclass must implement abstract method")
-
+        epsilon = 1e-10  # Small value to prevent log(0)
+        return -np.sum(np.log(self.pdf(self.data, *params) + epsilon))
+        
     def fit(self, initial_params, param_names=None):
         """Perform the fit."""
         if param_names is None:
