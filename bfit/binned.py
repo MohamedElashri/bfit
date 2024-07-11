@@ -1,6 +1,5 @@
-import numpy as np
 from .base import FitBase
-from .components import *
+import numpy as np
 
 class CompositeModel(FitBase):
     """

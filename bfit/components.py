@@ -1,7 +1,79 @@
-from .base import Component
-from .models import FitModels
+from scipy.stats import rv_continuous
+from .utils import FitModels
+from scipy.integrate import quad
 
 
+class Component(rv_continuous):
+    """
+    Base class for fit components.
+
+    This class extends scipy's rv_continuous to create custom probability
+    distributions that can be used as components in composite fit models.
+
+    Attributes:
+        function (callable): The function defining the component.
+        _pdf (callable): The probability density function of the component.
+        n_params (int): The number of parameters in the component.
+        normalization (float): The normalization factor for the component.
+    """
+
+    def __init__(self, function, pdf, n_params):
+        """
+        Initialize the Component instance.
+
+        Args:
+            function (callable): The function defining the component.
+            pdf (callable): The probability density function of the component.
+            n_params (int): The number of parameters in the component.
+        """
+        super().__init__()
+        self.function = function
+        self._pdf = pdf
+        self.n_params = n_params
+        self.normalization = 1.0
+
+    def __call__(self, x, *params):
+        """
+        Call the component's function.
+
+        Args:
+            x (array-like): The x-values.
+            *params: The parameters for the function.
+
+        Returns:
+            array-like: The y-values of the function.
+        """
+        return self.function(x, *params)
+
+    def pdf(self, x, *params):
+        """
+        Probability density function of the component.
+
+        Args:
+            x (array-like): The x-values.
+            *params: The parameters for the PDF.
+
+        Returns:
+            array-like: The y-values of the PDF.
+        """
+        return self._pdf(x, *params) / self.normalization
+
+    def normalize(self, x_min, x_max, *params):
+        """
+        Normalize the component over a given range.
+
+        Args:
+            x_min (float): The minimum x-value of the range.
+            x_max (float): The maximum x-value of the range.
+            *params: The parameters for the PDF.
+
+        Returns:
+            float: The normalization factor.
+        """
+        self.normalization, _ = quad(self._pdf, x_min, x_max, args=params)
+        return self.normalization
+    
+    
 # Pre-defined components
 class GaussianComponent(Component):
     """Gaussian distribution component."""
@@ -37,137 +109,3 @@ class ArgusComponent(Component):
     """ARGUS background function component."""
     def __init__(self):
         super().__init__(FitModels().argus_bg, FitModels().argus_bg, 3)  # m0, c, p
-
-# Binned fit models
-class GaussianExpFit(CompositeModel):
-    """Gaussian + Exponential binned fit model."""
-    def __init__(self, bins, counts, param_limits=None):
-        super().__init__(bins, counts, param_limits)
-        self.add_component(GaussianComponent())
-        self.add_component(ExponentialComponent())
-
-class DoubleGaussianExpFit(CompositeModel):
-    """Double Gaussian + Exponential binned fit model."""
-    def __init__(self, bins, counts, param_limits=None):
-        super().__init__(bins, counts, param_limits)
-        self.add_component(GaussianComponent())
-        self.add_component(GaussianComponent())
-        self.add_component(ExponentialComponent())
-
-class DoubleGaussianParabolaFit(CompositeModel):
-    """Double Gaussian + Parabola binned fit model."""
-    def __init__(self, bins, counts, param_limits=None):
-        super().__init__(bins, counts, param_limits)
-        self.add_component(GaussianComponent())
-        self.add_component(GaussianComponent())
-        self.add_component(ParabolaComponent())
-
-class DoubleGaussianLinearFit(CompositeModel):
-    """Double Gaussian + Linear binned fit model."""
-    def __init__(self, bins, counts, param_limits=None):
-        super().__init__(bins, counts, param_limits)
-        self.add_component(GaussianComponent())
-        self.add_component(GaussianComponent())
-        self.add_component(LinearComponent())
-
-class GaussianArgusFit(CompositeModel):
-    """Gaussian + ARGUS binned fit model."""
-    def __init__(self, bins, counts, param_limits=None):
-        super().__init__(bins, counts, param_limits)
-        self.add_component(GaussianComponent())
-        self.add_component(ArgusComponent())
-
-class GaussianLinearFit(CompositeModel):
-    """Gaussian + Linear binned fit model."""
-    def __init__(self, bins, counts, param_limits=None):
-        super().__init__(bins, counts, param_limits)
-        self.add_component(GaussianComponent())
-        self.add_component(LinearComponent())
-
-class BreitWignerExpFit(CompositeModel):
-    """Breit-Wigner + Exponential binned fit model."""
-    def __init__(self, bins, counts, param_limits=None):
-        super().__init__(bins, counts, param_limits)
-        self.add_component(BreitWignerComponent())
-        self.add_component(ExponentialComponent())
-
-class BreitWignerLinearFit(CompositeModel):
-    """Breit-Wigner + Linear binned fit model."""
-    def __init__(self, bins, counts, param_limits=None):
-        super().__init__(bins, counts, param_limits)
-        self.add_component(BreitWignerComponent())
-        self.add_component(LinearComponent())
-
-class CrystalBallExpFit(CompositeModel):
-    """Crystal Ball + Exponential binned fit model."""
-    def __init__(self, bins, counts, param_limits=None):
-        super().__init__(bins, counts, param_limits)
-        self.add_component(CrystalBallComponent())
-        self.add_component(ExponentialComponent())
-
-# Unbinned fit models
-class UnbinnedGaussianExpFit(UnbinnedCompositeModel):
-    """Gaussian + Exponential unbinned fit model."""
-    def __init__(self, data, param_limits=None):
-        super().__init__(data, param_limits)
-        self.add_component(GaussianComponent())
-        self.add_component(ExponentialComponent())
-
-class UnbinnedDoubleGaussianExpFit(UnbinnedCompositeModel):
-    """Double Gaussian + Exponential unbinned fit model."""
-    def __init__(self, data, param_limits=None):
-        super().__init__(data, param_limits)
-        self.add_component(GaussianComponent())
-        self.add_component(GaussianComponent())
-        self.add_component(ExponentialComponent())
-
-class UnbinnedDoubleGaussianParabolaFit(UnbinnedCompositeModel):
-    """Double Gaussian + Parabola unbinned fit model."""
-    def __init__(self, data, param_limits=None):
-        super().__init__(data, param_limits)
-        self.add_component(GaussianComponent())
-        self.add_component(GaussianComponent())
-        self.add_component(ParabolaComponent())
-
-class UnbinnedDoubleGaussianLinearFit(UnbinnedCompositeModel):
-    """Double Gaussian + Linear unbinned fit model."""
-    def __init__(self, data, param_limits=None):
-        super().__init__(data, param_limits)
-        self.add_component(GaussianComponent())
-        self.add_component(GaussianComponent())
-        self.add_component(LinearComponent())
-
-class UnbinnedGaussianArgusFit(UnbinnedCompositeModel):
-    """Gaussian + ARGUS unbinned fit model."""
-    def __init__(self, data, param_limits=None):
-        super().__init__(data, param_limits)
-        self.add_component(GaussianComponent())
-        self.add_component(ArgusComponent())
-
-class UnbinnedGaussianLinearFit(UnbinnedCompositeModel):
-    """Gaussian + Linear unbinned fit model."""
-    def __init__(self, data, param_limits=None):
-        super().__init__(data, param_limits)
-        self.add_component(GaussianComponent())
-        self.add_component(LinearComponent())
-
-class UnbinnedBreitWignerExpFit(UnbinnedCompositeModel):
-    """Breit-Wigner + Exponential unbinned fit model."""
-    def __init__(self, data, param_limits=None):
-        super().__init__(data, param_limits)
-        self.add_component(BreitWignerComponent())
-        self.add_component(ExponentialComponent())
-
-class UnbinnedBreitWignerLinearFit(UnbinnedCompositeModel):
-    """Breit-Wigner + Linear unbinned fit model."""
-    def __init__(self, data, param_limits=None):
-        super().__init__(data, param_limits)
-        self.add_component(BreitWignerComponent())
-        self.add_component(LinearComponent())
-
-class UnbinnedCrystalBallExpFit(UnbinnedCompositeModel):
-    """Crystal Ball + Exponential unbinned fit model."""
-    def __init__(self, data, param_limits=None):
-        super().__init__(data, param_limits)
-        self.add_component(CrystalBallComponent())
-        self.add_component(ExponentialComponent())

@@ -1,79 +1,7 @@
 import numpy as np
-from scipy.stats import rv_continuous
-from scipy.integrate import quad
 from iminuit import Minuit
+from .utils import FitModels
 import matplotlib.pyplot as plt
-from .utils import PlotConfig
-
-class Component(rv_continuous):
-    """
-    Base class for fit components.
-
-    This class extends scipy's rv_continuous to create custom probability
-    distributions that can be used as components in composite fit models.
-
-    Attributes:
-        function (callable): The function defining the component.
-        _pdf (callable): The probability density function of the component.
-        n_params (int): The number of parameters in the component.
-        normalization (float): The normalization factor for the component.
-    """
-
-    def __init__(self, function, pdf, n_params):
-        """
-        Initialize the Component instance.
-
-        Args:
-            function (callable): The function defining the component.
-            pdf (callable): The probability density function of the component.
-            n_params (int): The number of parameters in the component.
-        """
-        super().__init__()
-        self.function = function
-        self._pdf = pdf
-        self.n_params = n_params
-        self.normalization = 1.0
-
-    def __call__(self, x, *params):
-        """
-        Call the component's function.
-
-        Args:
-            x (array-like): The x-values.
-            *params: The parameters for the function.
-
-        Returns:
-            array-like: The y-values of the function.
-        """
-        return self.function(x, *params)
-
-    def pdf(self, x, *params):
-        """
-        Probability density function of the component.
-
-        Args:
-            x (array-like): The x-values.
-            *params: The parameters for the PDF.
-
-        Returns:
-            array-like: The y-values of the PDF.
-        """
-        return self._pdf(x, *params) / self.normalization
-
-    def normalize(self, x_min, x_max, *params):
-        """
-        Normalize the component over a given range.
-
-        Args:
-            x_min (float): The minimum x-value of the range.
-            x_max (float): The maximum x-value of the range.
-            *params: The parameters for the PDF.
-
-        Returns:
-            float: The normalization factor.
-        """
-        self.normalization, _ = quad(self._pdf, x_min, x_max, args=params)
-        return self.normalization
 
 class FitBase:
     """
@@ -91,6 +19,7 @@ class FitBase:
         y_vals (array-like): The count in each bin.
         y_errs (array-like): The error on the count in each bin.
         param_limits (dict): Optional limits on the fit parameters.
+        fit_models (FitModels): An instance of the FitModels class.
         fit_result (Minuit): The result of the fit, once performed.
     """
 
@@ -106,6 +35,7 @@ class FitBase:
         self.bins = bins
         self.x_min, self.x_max, self.bin_width, self.x_vals, self.y_vals, self.y_errs = self._setup_fit(counts, bins)
         self.param_limits = param_limits or {}
+        self.fit_models = FitModels(self.bin_width, self.x_min, self.x_max)
         self.fit_result = None
 
     def _setup_fit(self, counts, bins):
@@ -143,7 +73,7 @@ class FitBase:
         residuals_squared = ((y_vals_masked - prediction) / y_errs_masked) ** 2
         return np.sum(residuals_squared)
 
-    def fit(self, initial_params, param_names=None):
+    def fit(self, initial_params, param_names=None, param_limits=None):
         """
         Perform the fit using Minuit.
 
@@ -157,6 +87,8 @@ class FitBase:
         if param_names is None:
             param_names = [f'param_{i}' for i in range(len(initial_params))]
         assert len(param_names) == len(initial_params), "Number of parameter names must match the number of initial parameters."
+
+        self.param_limits = param_limits or {}
         
         minuit = Minuit(self.chi_squared, name=param_names, *initial_params)
         for key, value in self.param_limits.items():
@@ -164,6 +96,11 @@ class FitBase:
         minuit.migrad()
         self.fit_result = minuit
         return minuit
+
+    def add_component(self, component, weight=1.0):
+        if not hasattr(self, 'components'):
+            self.components = []
+        self.components.append((component, weight))
 
     def plot(self, config=None):
         """
@@ -265,7 +202,7 @@ class FitBase:
             return self.fit_result.fval
         else:
             raise RuntimeError("Fit has not been performed yet.")
-
+        
 class UnbinnedFitBase:
     """
     Base class for all unbinned fit models.
@@ -278,6 +215,7 @@ class UnbinnedFitBase:
         x_min (float): The minimum x-value of the fit range.
         x_max (float): The maximum x-value of the fit range.
         param_limits (dict): Optional limits on the fit parameters.
+        fit_models (FitModels): An instance of the FitModels class.
         fit_result (Minuit): The result of the fit, once performed.
     """
 
@@ -292,6 +230,7 @@ class UnbinnedFitBase:
         self.data = data
         self.x_min, self.x_max = self._setup_fit(data)
         self.param_limits = param_limits or {}
+        self.fit_models = FitModels(x_min=self.x_min, x_max=self.x_max)
         self.fit_result = None
 
     def _setup_fit(self, data):
