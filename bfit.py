@@ -219,8 +219,7 @@ class UnbinnedFitBase:
 
     def log_likelihood(self, *params):
         """Calculate log-likelihood value."""
-        epsilon = 1e-10  # Small value to prevent log(0)
-        return -np.sum(np.log(self.pdf(self.data, *params) + epsilon))
+        raise NotImplementedError("Subclass must implement abstract method")
         
     def fit(self, initial_params, param_names=None):
         """Perform the fit."""
@@ -326,8 +325,9 @@ class UnbinnedCompositeModel(UnbinnedFitBase):
 
     def log_likelihood(self, *params):
         """Calculate log-likelihood value."""
-        return -np.sum(np.log(self.pdf(self.data, *params)))
-
+        epsilon = 1e-10  # Small value to prevent log(0)
+        return -np.sum(np.log(self.pdf(self.data, *params) + epsilon))
+        
 # Pre-defined components
 class GaussianComponent(Component):
     def __init__(self):
