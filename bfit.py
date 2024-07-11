@@ -3,6 +3,8 @@ import matplotlib.pyplot as plt
 from iminuit import Minuit
 from scipy.integrate import quad
 from scipy.stats import rv_continuous
+from scipy.integrate import quad
+
 
 class FitModels:
     """Contains various probability distribution functions and background models."""
@@ -309,22 +311,29 @@ class UnbinnedCompositeModel(UnbinnedFitBase):
         """Add a component to the composite model."""
         self.components.append((component, weight))
 
-    def pdf(self, x_vals, *params):
-        """Composite probability density function."""
+    def unnormalized_pdf(self, x_vals, *params):
+        """Unnormalized composite probability density function."""
         result = np.zeros_like(x_vals)
         param_index = 0
-        total_weight = 0
         for component, weight in self.components:
             n_params = component.n_params
             result += weight * component.pdf(x_vals, *params[param_index:param_index+n_params])
             param_index += n_params
-            total_weight += weight
-        
-        # Normalize the PDF
-        return result / total_weight
+        return result
+
+    def integrate_pdf(self, *params):
+        """Numerically integrate the PDF over the data range."""
+        integral, _ = quad(lambda x: self.unnormalized_pdf(x, *params), self.x_min, self.x_max)
+        return integral
+
+    def pdf(self, x_vals, *params):
+        """Normalized composite probability density function."""
+        unnormalized = self.unnormalized_pdf(x_vals, *params)
+        normalization = self.integrate_pdf(*params)
+        return unnormalized / normalization
 
     def log_likelihood(self, *params):
-        """Calculate log-likelihood value."""
+        """Calculate log-likelihood value using the normalized PDF."""
         epsilon = 1e-10  # Small value to prevent log(0)
         return -np.sum(np.log(self.pdf(self.data, *params) + epsilon))
         
