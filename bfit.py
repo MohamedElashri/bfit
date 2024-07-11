@@ -3,8 +3,19 @@ import matplotlib.pyplot as plt
 from iminuit import Minuit
 from scipy.integrate import quad
 from scipy.stats import rv_continuous
-from scipy.integrate import quad
 
+class PlotConfig:
+    def __init__(self, **kwargs):
+        self.title = kwargs.get('title', 'Fit plot')
+        self.xlabel = kwargs.get('xlabel', 'X')
+        self.ylabel = kwargs.get('ylabel', 'Y')
+        self.vlines = kwargs.get('vlines', None)
+        self.plot_range = kwargs.get('plot_range', None)
+        self.data_color = kwargs.get('data_color', 'b')
+        self.data_label = kwargs.get('data_label', 'Data')
+        self.fit_color = kwargs.get('fit_color', 'r')
+        self.fit_label = kwargs.get('fit_label', 'Fit')
+        self.show_plot = kwargs.get('show_plot', True)
 
 class FitModels:
     """Contains various probability distribution functions and background models."""
@@ -101,36 +112,38 @@ class FitBase:
         self.fit_result = minuit
         return minuit
 
-    def plot(self, title='Fit plot', xlabel='X', ylabel='Y', vlines=None, plot_range=None,
-             data_color='b', data_label='Data', fit_color='r', fit_label='Fit', show_plot=True):
+    def plot(self, config=None):
         """Plot the fit results."""
+        if config is None:
+            config = PlotConfig()
+
         fig, ax = plt.subplots()
-        ax.set_title(title)
+        ax.set_title(config.title)
 
         visual_bins = self.bins
-        if plot_range is not None:
-            visual_bins = visual_bins[(visual_bins >= plot_range[0]) & (visual_bins <= plot_range[1] + self.bin_width)]
-            ax.set_xlim(plot_range)
+        if config.plot_range is not None:
+            visual_bins = visual_bins[(visual_bins >= config.plot_range[0]) & (visual_bins <= config.plot_range[1] + self.bin_width)]
+            ax.set_xlim(config.plot_range)
 
-        ax.hist(self.x_vals, bins=visual_bins, weights=self.y_vals, color=data_color, label=data_label)
+        ax.hist(self.x_vals, bins=visual_bins, weights=self.y_vals, color=config.data_color, label=config.data_label)
 
         if self.fit_result:
             dense_x_vals = np.linspace(self.x_min, self.x_max, 1000)
             predictions = self.fit_function(dense_x_vals, *self.fit_result.values)
-            ax.plot(dense_x_vals, predictions, color=fit_color, label=fit_label)
+            ax.plot(dense_x_vals, predictions, color=config.fit_color, label=config.fit_label)
 
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
+        ax.set_xlabel(config.xlabel)
+        ax.set_ylabel(config.ylabel)
         ax.set_ylim(0, 1.15 * max(np.append(self.y_vals, predictions)))
         ax.grid(True)
         
-        if vlines:
-            for vl in vlines:
+        if config.vlines:
+            for vl in config.vlines:
                 ax.vlines(vl, 0., 0.6 * max(self.y_vals), colors='yellow')
         
         ax.legend()
 
-        if show_plot:
+        if config.show_plot:
             plt.show()
 
         return fig, ax
@@ -236,35 +249,37 @@ class UnbinnedFitBase:
         self.fit_result = minuit
         return minuit
 
-    def plot(self, title='Fit plot', xlabel='X', ylabel='Y', vlines=None, plot_range=None,
-             data_color='b', data_label='Data', fit_color='r', fit_label='Fit', show_plot=True):
+    def plot(self, config=None):
         """Plot the fit results."""
-        fig, ax = plt.subplots()
-        ax.set_title(title)
+        if config is None:
+            config = PlotConfig()
 
-        if plot_range is not None:
-            ax.set_xlim(plot_range)
+        fig, ax = plt.subplots()
+        ax.set_title(config.title)
+
+        if config.plot_range is not None:
+            ax.set_xlim(config.plot_range)
         else:
             ax.set_xlim(self.x_min, self.x_max)
 
-        ax.hist(self.data, bins=100, density=True, color=data_color, label=data_label)
+        ax.hist(self.data, bins=100, density=True, color=config.data_color, label=config.data_label)
 
         if self.fit_result:
             dense_x_vals = np.linspace(self.x_min, self.x_max, 1000)
             predictions = self.pdf(dense_x_vals, *self.fit_result.values)
-            ax.plot(dense_x_vals, predictions, color=fit_color, label=fit_label)
+            ax.plot(dense_x_vals, predictions, color=config.fit_color, label=config.fit_label)
 
-        ax.set_xlabel(xlabel)
-        ax.set_ylabel(ylabel)
+        ax.set_xlabel(config.xlabel)
+        ax.set_ylabel(config.ylabel)
         ax.grid(True)
         
-        if vlines:
-            for vl in vlines:
+        if config.vlines:
+            for vl in config.vlines:
                 ax.vlines(vl, 0., 0.6 * ax.get_ylim()[1], colors='yellow')
         
         ax.legend()
 
-        if show_plot:
+        if config.show_plot:
             plt.show()
 
         return fig, ax
@@ -311,32 +326,25 @@ class UnbinnedCompositeModel(UnbinnedFitBase):
         """Add a component to the composite model."""
         self.components.append((component, weight))
 
-    def unnormalized_pdf(self, x_vals, *params):
-        """Unnormalized composite probability density function."""
+    def pdf(self, x_vals, *params):
+        """Composite probability density function."""
         result = np.zeros_like(x_vals)
         param_index = 0
+        total_weight = 0
         for component, weight in self.components:
             n_params = component.n_params
             result += weight * component.pdf(x_vals, *params[param_index:param_index+n_params])
             param_index += n_params
-        return result
-
-    def integrate_pdf(self, *params):
-        """Numerically integrate the PDF over the data range."""
-        integral, _ = quad(lambda x: self.unnormalized_pdf(x, *params), self.x_min, self.x_max)
-        return integral
-
-    def pdf(self, x_vals, *params):
-        """Normalized composite probability density function."""
-        unnormalized = self.unnormalized_pdf(x_vals, *params)
-        normalization = self.integrate_pdf(*params)
-        return unnormalized / normalization
+            total_weight += weight
+        
+        # Normalize the PDF
+        return result / total_weight
 
     def log_likelihood(self, *params):
-        """Calculate log-likelihood value using the normalized PDF."""
+        """Calculate log-likelihood value."""
         epsilon = 1e-10  # Small value to prevent log(0)
         return -np.sum(np.log(self.pdf(self.data, *params) + epsilon))
-        
+
 # Pre-defined components
 class GaussianComponent(Component):
     def __init__(self):
